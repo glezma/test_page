@@ -37,6 +37,19 @@
     return target[name](...args);
   }
 
+  // Accepts either the bare widget code or the whole SalesIQ embed snippet,
+  // and keeps the snippet's script host so other data centres also work.
+  function parseInput(raw) {
+    const text = (raw || '').trim();
+    const src = text.match(/https:\/\/[^"'\s]+\/widget\?[^"'\s]*/);
+    if (src) {
+      const url = new URL(src[0].replace(/&amp;/g, '&'));
+      return { code: url.searchParams.get('wc') || '', host: url.origin + url.pathname };
+    }
+    const wc = text.match(/wc=([A-Za-z0-9]+)/);
+    return { code: wc ? wc[1] : text, host: SCRIPT_HOST };
+  }
+
   function readWidgetCode() {
     const fromUrl = new URLSearchParams(location.search).get('wc');
     if (fromUrl) {
@@ -63,10 +76,16 @@
     chat.complete = () => log('Chat finalizado.');
   }
 
-  function loadWidget(widgetCode) {
+  function loadWidget(raw) {
+    const { code: widgetCode, host } = parseInput(raw);
+    if (!/^https:\/\/salesiq\.zohopublic\.[a-z.]+\/widget$/.test(host)) {
+      setStatus('host inválido');
+      log(`El script debe venir de salesiq.zohopublic.*, no de ${host}.`);
+      return;
+    }
     if (!/^[A-Za-z0-9]+$/.test(widgetCode)) {
       setStatus('código inválido');
-      log('El widget code debe ser alfanumérico (por ejemplo siq…).');
+      log('Pega el código (siq…) o el snippet completo de SalesIQ.');
       return;
     }
     if (document.getElementById('zsiqscript')) {
@@ -80,7 +99,7 @@
     const script = document.createElement('script');
     script.id = 'zsiqscript';
     script.defer = true;
-    script.src = `${SCRIPT_HOST}?wc=${encodeURIComponent(widgetCode)}`;
+    script.src = `${host}?wc=${encodeURIComponent(widgetCode)}`;
     script.onerror = () => {
       setStatus('error de carga');
       log('No se pudo cargar el script de SalesIQ (revisa el código o la red).');
